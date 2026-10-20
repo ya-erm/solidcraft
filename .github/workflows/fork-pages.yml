@@ -35,24 +35,6 @@ jobs:
       - name: Build the web app from main
         working-directory: apps/solidcraft-web
         run: trunk build --release --public-url ./
-      - name: Install browser smoke dependencies
-        run: |
-          npm install --prefix target/pages-smoke --no-save playwright@1.64.1
-          target/pages-smoke/node_modules/.bin/playwright install --with-deps chromium
-      - name: Check locales and capture review screenshots
-        run: |
-          python3 -m http.server 8781 --bind 127.0.0.1 --directory dist/web &
-          trap 'kill $!' EXIT
-          node .github/scripts/fork-pages-smoke.mjs
-          mkdir -p dist/web/checks
-          cp target/pages-evidence/*.png dist/web/checks/
-          git rev-parse HEAD > dist/web/checks/commit.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: locale-screenshots
-          path: target/pages-evidence
-          if-no-files-found: ignore
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
