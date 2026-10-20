@@ -1,0 +1,69 @@
+name: Fork Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: fork-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'ya-erm/solidcraft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: fork-pages
+      - name: Install Trunk
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build the web app from main
+        working-directory: apps/solidcraft-web
+        run: trunk build --release --public-url ./
+      - name: Install browser smoke dependencies
+        run: |
+          npm install --prefix target/pages-smoke --no-save playwright@1.64.1
+          target/pages-smoke/node_modules/.bin/playwright install --with-deps chromium
+      - name: Check locales and capture review screenshots
+        run: |
+          python3 -m http.server 8781 --bind 127.0.0.1 --directory dist/web &
+          trap 'kill $!' EXIT
+          node .github/scripts/fork-pages-smoke.mjs
+          mkdir -p dist/web/checks
+          cp target/pages-evidence/*.png dist/web/checks/
+          git rev-parse HEAD > dist/web/checks/commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: locale-screenshots
+          path: target/pages-evidence
+          if-no-files-found: ignore
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
